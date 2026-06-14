@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#14181F" />
+<title>ニュートラル・ノート</title>
+<link rel="manifest" href="./manifest.webmanifest" />
+<link rel="apple-touch-icon" href="./icon-192.png" />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#14181F; --surface:#1C222B; --surface2:#232B36; --line:#2E3845;
+    --ink:#E9E5DB; --sub:#8C95A3; --ai:#7FA0BD; --ember:#C98A63;
+    --fact:#8FB8A0; --warn:#D4B36A;
+    --serif:"Noto Serif JP","Hiragino Mincho ProN","Yu Mincho",serif;
+    --sans:"Noto Sans JP","Hiragino Sans",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans);
+    font-size:15px; line-height:1.75; -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .wrap{max-width:560px; margin:0 auto; padding:max(28px,env(safe-area-inset-top)) 18px calc(80px + env(safe-area-inset-bottom));}
+  h1{font-family:var(--serif); font-weight:500; font-size:24px; letter-spacing:.3em; margin:0;}
+  .tag{color:var(--sub); font-size:12px; margin:6px 0 0; letter-spacing:.06em;}
+  header{margin-bottom:24px;}
+  nav{display:flex; gap:8px; margin-bottom:20px; align-items:center;}
+  .tab{font-family:var(--sans); cursor:pointer; font-size:13px; padding:7px 14px;
+       background:transparent; color:var(--sub); border:1px solid transparent; border-radius:8px;}
+  .tab.on{background:var(--surface2); color:var(--ink); border-color:var(--line);}
+  .flash{color:var(--fact); font-size:12px;}
+  .grid{display:grid; gap:16px;}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px;}
+  .card.sm{padding:14px;}
+  .label{font-family:var(--sans); font-size:11px; letter-spacing:.18em; color:var(--sub); margin-bottom:8px;}
+  .steps{display:flex; gap:6px; align-items:center;}
+  .steps span{font-size:11px; letter-spacing:.12em; color:var(--sub); border-bottom:1px solid transparent; padding-bottom:2px;}
+  .steps span.on{color:var(--ink); border-bottom-color:var(--ai);}
+  textarea{width:100%; background:var(--bg); color:var(--ink); border:1px solid var(--line);
+    border-radius:8px; padding:12px; font-family:var(--serif); font-size:15px; line-height:1.9; resize:vertical;}
+  textarea:focus{outline:none; border-color:var(--ai);}
+  .row{display:flex; justify-content:space-between; align-items:center;}
+  .right{text-align:right;}
+  .btn{font-family:var(--sans); cursor:pointer; background:transparent; color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; padding:11px 18px; font-size:14px; transition:opacity .15s;}
+  .btn.primary{background:var(--ai); color:#10141A; border:none; font-weight:700;}
+  .btn.sm{padding:6px 12px; font-size:13px;}
+  .btn:disabled{opacity:.4; cursor:default;}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px;}
+  .chip{font-family:var(--serif); font-size:14px; cursor:pointer; padding:6px 14px; border-radius:999px;
+    background:transparent; color:var(--ink); border:1px solid var(--line);}
+  .chip.on{background:var(--ember); color:#10141A; border-color:var(--ember);}
+  input[type=range]{width:100%; accent-color:var(--ember);}
+  .big{font-family:var(--serif); font-size:28px; color:var(--ember); text-align:center; margin:4px 0 12px;}
+  .hint{font-size:12px; color:var(--warn); margin:10px 0 0;}
+  .mh{font-size:12px; letter-spacing:.15em; margin-bottom:4px;}
+  .mline{margin:2px 0; font-family:var(--serif);}
+  .q{font-family:var(--serif); font-size:17px; line-height:2; margin:0 0 14px;}
+  .micwrap{position:relative;}
+  .mic{position:absolute; right:8px; bottom:8px; width:40px; height:40px; border-radius:999px;
+    border:1px solid var(--line); background:var(--surface2); color:var(--ai); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-size:18px;}
+  .mic.rec{background:var(--ember); color:#10141A; border-color:var(--ember); animation:pulse 1.1s ease infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(201,138,99,.5)}100%{box-shadow:0 0 0 10px rgba(201,138,99,0)}}
+  .micnote{font-size:11px; color:var(--sub); margin:8px 0 0;}
+  .entry-meta{font-size:12px; color:var(--sub);}
+  .entry-text{font-family:var(--serif); font-size:14px; line-height:1.9; margin:8px 0 0; white-space:pre-wrap;}
+  .entry-ans{font-family:var(--serif); font-size:14px; color:var(--ai); margin:8px 0 0; border-left:2px solid var(--ai); padding-left:10px; white-space:pre-wrap;}
+  .del{background:none; border:none; color:var(--sub); cursor:pointer; font-size:12px;}
+  .muted{color:var(--sub); font-size:14px;}
+  svg.water{width:100%; display:block;}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+"use strict";
+
+/* ニュートラル・ノート — Android PWA / 完全オフライン版
+   思想: AIは助言しない。鏡として「事実/解釈/べき」を映し、問いを一つ返すだけ。
+   保存: localStorage（キー 'nn-entries'） */
+
+var C = { ai:"#7FA0BD", ember:"#C98A63", sub:"#8C95A3", ink:"#E9E5DB" };
+var EMOTIONS = ["不安","怒り","悲しみ","焦り","孤独","罪悪感","むなしさ","恐れ","悔しさ","安堵","喜び","静けさ"];
+var STORAGE_KEY = "nn-entries";
+
+var QUESTIONS = [
+  "この出来事が何かのメッセージだとしたら、本当はどうしたい？",
+  "事実だけを見たとき、いま本当に困っていることは何だろう？",
+  "その『べき』は、誰の声だろう？",
+  "10年後の自分なら、いまの自分に何と言うだろう？",
+  "怖れているのは、起きたことそのもの？ それとも、これから起きると想像していること？",
+  "いま、いちばん大切にしたいものは何だろう？",
+  "もし誰も責めなくていいとしたら、最初に何を手放す？"
+];
+
+/* ---- 保存 ---- */
+function loadEntries(){
+  try{ var r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : []; }
+  catch(e){ return []; }
+}
+function saveEntries(entries){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); }
+  catch(e){ console.error(e); }
+}
+
+/* ---- ローカルの「べき」検出 ---- */
+function detectShoulds(text){
+  var patterns = [
+    /[^。\n]*(?:すべき|べきだ|べきで|べきな)[^。\n]*/g,
+    /[^。\n]*(?:しなければ|せねば|しないと(?:いけ|だめ)|ねばならな)[^。\n]*/g,
+    /[^。\n]*(?:はずだ|はずなのに)[^。\n]*/g
+  ];
+  var found = [];
+  for(var i=0;i<patterns.length;i++){
+    var m = text.match(patterns[i]);
+    if(m) for(var j=0;j<m.length;j++){ var s=m[j].trim(); if(found.indexOf(s)<0) found.push(s); }
+  }
+  return found;
+}
+
+/* ---- ローカルの鏡（AIなし・ことばの簡易仕分け） ---- */
+var INTERP_MARKERS = ["かもしれ","と思","きっと","どうせ","たぶん","多分","気がする","に違いない","だろう",
+  "なんで","なぜ","どうして","感じ","気持ち","嫌","いや","不安","怖","こわ","つらい","辛い","悲し","寂し",
+  "さみし","心配","最悪","ダメ","だめ","嫌い","きらい","むかつ","腹が立","ひどい","酷い"];
+function buildMirror(text, emotions){
+  var shoulds = detectShoulds(text);
+  var sentences = text.split(/(?<=[。！？\n])/);
+  var facts = [], interps = [];
+  for(var i=0;i<sentences.length;i++){
+    var s = sentences[i].replace(/[。！？\n]+$/,"").trim();
+    if(!s) continue;
+    var isShould = false;
+    for(var k=0;k<shoulds.length;k++){ if(s.indexOf(shoulds[k])>=0 || shoulds[k].indexOf(s)>=0){ isShould=true; break; } }
+    if(isShould) continue;
+    var isInterp = false;
+    for(var m=0;m<INTERP_MARKERS.length;m++){ if(s.indexOf(INTERP_MARKERS[m])>=0){ isInterp=true; break; } }
+    (isInterp?interps:facts).push(s);
+  }
+  var qi = (text.length + (emotions.length?emotions[0].length:0)) % QUESTIONS.length;
+  return { facts:facts.slice(0,5), interpretations:interps.slice(0,5), shoulds:shoulds.slice(0,3), question:QUESTIONS[qi] };
+}
+
+/* ---- 心の水位（SVG） ---- */
+function waterSvg(entries){
+  var pts = entries.slice(-30);
+  if(pts.length < 2){
+    return '<p class="muted" style="line-height:1.8">記録が2件たまると、不安度の水位線がここに現れます。</p>';
+  }
+  var W=320,H=120,pad=8;
+  var xs=[], ys=[];
+  for(var i=0;i<pts.length;i++){
+    xs.push(pad + (i*(W-pad*2))/(pts.length-1));
+    var inten = (pts[i].intensity==null?50:pts[i].intensity);
+    ys.push(H-pad - (inten/100)*(H-pad*2));
+  }
+  var path="";
+  for(var j=0;j<xs.length;j++){ path += (j===0?"M":"L") + xs[j].toFixed(1) + "," + ys[j].toFixed(1) + " "; }
+  var area = path + "L"+xs[xs.length-1]+","+(H-pad)+" L"+xs[0]+","+(H-pad)+" Z";
+  var last = pts[pts.length-1].intensity==null?50:pts[pts.length-1].intensity;
+  return '<svg class="water" viewBox="0 0 '+W+' '+H+'" aria-label="不安度の推移">'
+    + '<defs><linearGradient id="w" x1="0" y1="0" x2="0" y2="1">'
+    + '<stop offset="0%" stop-color="'+C.ai+'" stop-opacity="0.35"/>'
+    + '<stop offset="100%" stop-color="'+C.ai+'" stop-opacity="0.02"/></linearGradient></defs>'
+    + '<path d="'+area+'" fill="url(#w)"/>'
+    + '<path d="'+path+'" fill="none" stroke="'+C.ai+'" stroke-width="1.5"/>'
+    + '<circle cx="'+xs[xs.length-1]+'" cy="'+ys[ys.length-1]+'" r="3" fill="'+C.ai+'"/></svg>'
+    + '<p style="color:'+C.sub+';font-size:12px;margin:4px 0 0">直近の不安度 '
+    + '<span style="color:'+C.ink+';font-family:var(--serif);font-size:16px">'+last+'</span> / 100（最新'+pts.length+'件）</p>';
+}
+
+/* ---- 状態 ---- */
+var S = {
+  tab:"write", entries:loadEntries(),
+  step:0, text:"", emotions:[], intensity:50, mirror:null, answer:"",
+  savedFlash:false
+};
+
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+
+/* ---- 描画 ---- */
+var app = document.getElementById("app");
+var STEP_NAMES = ["書く","感じる","鏡","問い"];
+
+function render(){
+  var h = '';
+  h += '<header><h1>ニュートラル・ノート</h1>'
+     + '<p class="tag">変えない。還る。— 助言をしない記録帳</p></header>';
+
+  h += '<nav>'
+     + '<button class="tab '+(S.tab==="write"?"on":"")+'" data-tab="write">書く</button>'
+     + '<button class="tab '+(S.tab==="log"?"on":"")+'" data-tab="log">水位と記録</button>'
+     + (S.savedFlash?'<span class="flash">保存しました</span>':'')
+     + '</nav>';
+
+  if(S.tab==="write") h += renderWrite();
+  else h += renderLog();
+
+  app.innerHTML = h;
+  wire();
+}
+
+function renderWrite(){
+  var h = '<div class="grid">';
+  // 段階
+  h += '<div class="steps">';
+  for(var i=0;i<STEP_NAMES.length;i++){
+    h += '<span class="'+(i===S.step?"on":"")+'">'+STEP_NAMES[i]+(i<STEP_NAMES.length-1?"　":"")+'</span>';
+  }
+  h += '</div>';
+
+  if(S.step===0){
+    var sc = detectShoulds(S.text).length;
+    h += '<div class="card"><div class="label">いま、頭の中にあるもの</div>'
+      + '<div class="micwrap">'
+      + '<textarea id="ta-text" rows="8" placeholder="整えなくていい。出てくる順に、そのまま。">'+esc(S.text)+'</textarea>'
+      + '<button class="mic" id="mic-text" title="音声入力">🎤</button>'
+      + '</div>'
+      + '<p class="micnote" id="micnote-text">🎤で話すと文字になります（Chrome）。</p>'
+      + '<p class="hint" id="should-hint" style="'+(sc>0?'':'display:none')+'">「べき・ねば」が <b id="should-n">'+sc+'</b> か所。あとで鏡が映します。</p>'
+      + '<div class="right" style="margin-top:14px">'
+      + '<button class="btn primary" id="to-1" '+(S.text.trim().length<5?'disabled':'')+'>つぎへ</button></div>'
+      + '</div>';
+  }
+
+  if(S.step===1){
+    h += '<div class="card"><div class="label">解決しない。ただ、名前をつけて測る</div><div class="chips">';
+    for(var e=0;e<EMOTIONS.length;e++){
+      var on = S.emotions.indexOf(EMOTIONS[e])>=0;
+      h += '<button class="chip '+(on?"on":"")+'" data-emo="'+EMOTIONS[e]+'">'+EMOTIONS[e]+'</button>';
+    }
+    h += '</div><div class="label">不安度（いまの体感）</div>'
+      + '<input type="range" min="0" max="100" id="inten" value="'+S.intensity+'" aria-label="不安度">'
+      + '<div class="big" id="inten-v">'+S.intensity+'</div>'
+      + '<div class="row"><button class="btn" id="to-0b">もどる</button>'
+      + '<button class="btn primary" id="to-2">つぎへ</button></div></div>';
+  }
+
+  if(S.step===2){
+    if(!S.mirror) S.mirror = buildMirror(S.text, S.emotions);
+    var m = S.mirror;
+    h += '<div class="card"><div class="label">鏡 — 助言はしない。映すだけ</div>';
+    h += '<p class="muted" style="margin:0 0 14px">書いた文章を「起きた事実」と「頭の中の解釈」に仕分けました。判断や励ましはありません。</p>';
+    h += '<div class="grid">';
+    h += '<div><div class="mh" style="color:'+C.ember.replace(C.ember,"#8FB8A0")+'">起きた事実</div>';
+    if(m.facts.length){ for(var f=0;f<m.facts.length;f++) h += '<p class="mline">・'+esc(m.facts[f])+'</p>'; }
+    else h += '<p class="mline" style="color:'+C.sub+'">（事実らしい記述は拾えませんでした）</p>';
+    h += '</div>';
+    h += '<div><div class="mh" style="color:#D4B36A">頭の中の解釈</div>';
+    if(m.interpretations.length){ for(var p=0;p<m.interpretations.length;p++) h += '<p class="mline" style="color:'+C.sub+'">・'+esc(m.interpretations[p])+'</p>'; }
+    else h += '<p class="mline" style="color:'+C.sub+'">（解釈らしい記述は拾えませんでした）</p>';
+    h += '</div>';
+    if(m.shoulds.length){
+      h += '<div><div class="mh" style="color:#D4B36A">「べき・ねば」</div>';
+      for(var s=0;s<m.shoulds.length;s++) h += '<p class="mline" style="color:#D4B36A">・'+esc(m.shoulds[s])+'</p>';
+      h += '</div>';
+    }
+    h += '</div>';
+    h += '<div class="row" style="margin-top:14px"><button class="btn" id="to-1b">もどる</button>'
+      + '<button class="btn primary" id="to-3">つぎへ</button></div></div>';
+  }
+
+  if(S.step===3){
+    var q = (S.mirror && S.mirror.question) || "この出来事が、何かのメッセージだとしたら——本当はどうしたい？";
+    h += '<div class="card"><div class="label">問い</div>'
+      + '<p class="q">'+esc(q)+'</p>'
+      + '<div class="micwrap">'
+      + '<textarea id="ta-ans" rows="4" placeholder="答えは自分の中から。書けなければ空欄のままでいい。">'+esc(S.answer)+'</textarea>'
+      + '<button class="mic" id="mic-ans" title="音声入力">🎤</button>'
+      + '</div>'
+      + '<p class="micnote" id="micnote-ans">🎤で話すと文字になります。</p>'
+      + '<div class="row" style="margin-top:14px"><button class="btn" id="to-2b">もどる</button>'
+      + '<button class="btn primary" id="save">記録して閉じる</button></div></div>';
+  }
+
+  h += '</div>';
+  return h;
+}
+
+function renderLog(){
+  var h = '<div class="grid">';
+  h += '<div class="card"><div class="label">心の水位 — 不安度の推移</div>'+waterSvg(S.entries)+'</div>';
+  var rev = S.entries.slice().reverse();
+  for(var i=0;i<rev.length;i++){
+    var e = rev[i];
+    var d = new Date(e.date).toLocaleDateString("ja-JP",{month:"short",day:"numeric",weekday:"short"});
+    var emo = (e.emotions||[]).join("・");
+    var t = e.text.length>120 ? e.text.slice(0,120)+"…" : e.text;
+    h += '<div class="card sm"><div class="row" style="align-items:baseline">'
+      + '<span class="entry-meta">'+d+'　'+esc(emo)+'　<span style="color:'+C.ember+'">不安 '+e.intensity+'</span></span>'
+      + '<button class="del" data-del="'+e.id+'" aria-label="この記録を消す">消す</button></div>'
+      + '<p class="entry-text">'+esc(t)+'</p>'
+      + (e.answer?'<p class="entry-ans">'+esc(e.answer)+'</p>':'')
+      + '</div>';
+  }
+  if(S.entries.length===0) h += '<p class="muted">まだ記録がありません。「書く」から始められます。</p>';
+  h += '</div>';
+  return h;
+}
+
+/* ---- イベント結線 ---- */
+function wire(){
+  var tabs = app.querySelectorAll("[data-tab]");
+  tabs.forEach(function(b){ b.onclick=function(){ S.tab=b.getAttribute("data-tab"); render(); }; });
+
+  // step0
+  var ta = document.getElementById("ta-text");
+  if(ta){
+    ta.oninput = function(){
+      S.text = ta.value;
+      var n = detectShoulds(S.text).length;
+      var hint = document.getElementById("should-hint");
+      var hn = document.getElementById("should-n");
+      if(hn) hn.textContent = n;
+      if(hint) hint.style.display = n>0 ? "" : "none";
+      var nx = document.getElementById("to-1");
+      if(nx) nx.disabled = S.text.trim().length<5;
+    };
+    setupMic("mic-text","ta-text","text","micnote-text");
+  }
+  var to1 = document.getElementById("to-1"); if(to1) to1.onclick=function(){ S.step=1; render(); };
+
+  // step1
+  var chips = app.querySelectorAll("[data-emo]");
+  chips.forEach(function(b){ b.onclick=function(){
+    var e=b.getAttribute("data-emo"); var i=S.emotions.indexOf(e);
+    if(i>=0) S.emotions.splice(i,1); else S.emotions.push(e); render();
+  };});
+  var inten = document.getElementById("inten");
+  if(inten) inten.oninput=function(){ S.intensity=Number(inten.value); var v=document.getElementById("inten-v"); if(v) v.textContent=S.intensity; };
+  var to0b=document.getElementById("to-0b"); if(to0b) to0b.onclick=function(){ S.step=0; render(); };
+  var to2=document.getElementById("to-2"); if(to2) to2.onclick=function(){ S.step=2; S.mirror=null; render(); };
+
+  // step2
+  var to1b=document.getElementById("to-1b"); if(to1b) to1b.onclick=function(){ S.step=1; render(); };
+  var to3=document.getElementById("to-3"); if(to3) to3.onclick=function(){ S.step=3; render(); };
+
+  // step3
+  var taA=document.getElementById("ta-ans");
+  if(taA){
+    taA.oninput=function(){ S.answer=taA.value; };
+    setupMic("mic-ans","ta-ans","answer","micnote-ans");
+  }
+  var to2b=document.getElementById("to-2b"); if(to2b) to2b.onclick=function(){ S.step=2; render(); };
+  var saveB=document.getElementById("save"); if(saveB) saveB.onclick=doSave;
+
+  // log delete
+  var dels = app.querySelectorAll("[data-del]");
+  dels.forEach(function(b){ b.onclick=function(){
+    var id=Number(b.getAttribute("data-del"));
+    S.entries = S.entries.filter(function(x){ return x.id!==id; });
+    saveEntries(S.entries); render();
+  };});
+}
+
+function doSave(){
+  var entry = {
+    id:Date.now(), date:new Date().toISOString(),
+    text:S.text, emotions:S.emotions, intensity:S.intensity,
+    mirror:S.mirror||null, answer:S.answer
+  };
+  S.entries = S.entries.concat([entry]);
+  saveEntries(S.entries);
+  S.text=""; S.emotions=[]; S.intensity=50; S.mirror=null; S.answer=""; S.step=0;
+  S.savedFlash=true; S.tab="log"; render();
+  setTimeout(function(){ S.savedFlash=false; render(); }, 2200);
+}
+
+/* ---- 音声入力（Web Speech API） ---- */
+var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function setupMic(btnId, taId, field, noteId){
+  var btn = document.getElementById(btnId);
+  var ta = document.getElementById(taId);
+  var note = document.getElementById(noteId);
+  if(!btn) return;
+  if(!SR){
+    btn.style.display="none";
+    if(note) note.textContent="この端末は音声入力に未対応です（キーボードのマイクをお使いください）。";
+    return;
+  }
+  var rec = new SR();
+  rec.lang="ja-JP"; rec.interimResults=true; rec.continuous=true;
+  var base="", recording=false;
+  rec.onresult=function(ev){
+    var fin="", interim="";
+    for(var i=ev.resultIndex;i<ev.results.length;i++){
+      var tr=ev.results[i][0].transcript;
+      if(ev.results[i].isFinal) fin+=tr; else interim+=tr;
+    }
+    if(fin){ base += fin; }
+    ta.value = base + interim;
+    S[field] = ta.value;
+    if(field==="text"){
+      var n=detectShoulds(S.text).length, hn=document.getElementById("should-n"), hint=document.getElementById("should-hint"), nx=document.getElementById("to-1");
+      if(hn) hn.textContent=n; if(hint) hint.style.display=n>0?"":"none"; if(nx) nx.disabled=S.text.trim().length<5;
+    }
+  };
+  rec.onend=function(){ if(recording){ try{ rec.start(); }catch(e){} } };
+  rec.onerror=function(ev){
+    recording=false; btn.classList.remove("rec");
+    if(note){
+      if(ev.error==="not-allowed"||ev.error==="service-not-allowed") note.textContent="マイクの許可が必要です。アドレスバーの🔒からマイクを許可してください。";
+      else if(ev.error==="no-speech") note.textContent="音声が聞き取れませんでした。もう一度どうぞ。";
+    }
+  };
+  btn.onclick=function(){
+    if(recording){ recording=false; btn.classList.remove("rec"); rec.stop(); return; }
+    base = ta.value ? (ta.value.replace(/\s+$/,"") + (ta.value?"":"")) : "";
+    recording=true; btn.classList.add("rec");
+    try{ rec.start(); }catch(e){ /* 連続クリック対策 */ }
+  };
+}
+
+render();
+
+/* ---- Service Worker 登録（オフライン化） ---- */
+if("serviceWorker" in navigator){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("./sw.js").catch(function(e){ console.log("SW登録失敗",e); });
+  });
+}
+</script>
+</body>
+</html>

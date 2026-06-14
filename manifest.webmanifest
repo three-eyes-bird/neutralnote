@@ -1,0 +1,17 @@
+{
+  "name": "ニュートラル・ノート",
+  "short_name": "ノート",
+  "description": "助言をしない記録帳。事実・解釈・べきを映す鏡。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#14181F",
+  "theme_color": "#14181F",
+  "lang": "ja",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
