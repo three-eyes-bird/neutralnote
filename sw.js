@@ -1,5 +1,8 @@
-/* ニュートラル・ノート Service Worker — アプリ本体をキャッシュしてオフライン動作 */
-const CACHE = "nn-v1";
+/* ニュートラル・ノート Service Worker
+   方針: HTML本体はネット優先（更新を確実に反映）、オフライン時のみキャッシュ。
+        アイコン等の静的ファイルはキャッシュ優先（軽快＆オフライン）。
+   ※ アプリを更新したら CACHE の版番号を上げること（例: nn-v2 → nn-v3）。 */
+const CACHE = "nn-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -10,9 +13,7 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(ASSETS)).catch(() => {})
-  );
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).catch(() => {}));
   self.skipWaiting();
 });
 
@@ -28,20 +29,36 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
-  // 同一オリジンのアプリ資産: キャッシュ優先 / Googleフォント等は素通し
+
+  const isHTML =
+    req.mode === "navigate" ||
+    (req.headers.get("accept") || "").includes("text/html");
+
+  if (isHTML) {
+    // ネット優先：最新を取得し、取れたらキャッシュ更新。オフライン時はキャッシュ。
+    e.respondWith(
+      fetch(req)
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put("./index.html", copy));
+          return res;
+        })
+        .catch(() => caches.match(req).then((hit) => hit || caches.match("./index.html")))
+    );
+    return;
+  }
+
+  // それ以外（アイコン・manifest等）：キャッシュ優先。
   e.respondWith(
     caches.match(req).then((hit) => {
       if (hit) return hit;
-      return fetch(req)
-        .then((res) => {
-          // 同一オリジンの成功レスポンスはキャッシュに追加
-          if (res && res.ok && new URL(req.url).origin === self.location.origin) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() => caches.match("./index.html"));
+      return fetch(req).then((res) => {
+        if (res && res.ok && new URL(req.url).origin === self.location.origin) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
+        return res;
+      });
     })
   );
 });
