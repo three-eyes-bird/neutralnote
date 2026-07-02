@@ -2,7 +2,7 @@
    方針: HTML本体はネット優先（更新を確実に反映）、オフライン時のみキャッシュ。
         アイコン等の静的ファイルはキャッシュ優先（軽快＆オフライン）。
    ※ アプリを更新したら CACHE の版番号を上げること（例: nn-v2 → nn-v3）。 */
-const CACHE = "nn-v2";
+const CACHE = "nn-v3";
 const ASSETS = [
   "./",
   "./index.html",

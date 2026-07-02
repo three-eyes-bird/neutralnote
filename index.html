@@ -66,6 +66,14 @@
   .del{background:none; border:none; color:var(--sub); cursor:pointer; font-size:12px;}
   .muted{color:var(--sub); font-size:14px;}
   svg.water{width:100%; display:block;}
+  /* 窓（リフレーミングカード） */
+  .frame{cursor:pointer; border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--bg); transition:border-color .15s, background .15s;}
+  .frame.on{border-color:var(--ai); background:rgba(127,160,189,.08);}
+  .frame .ft{font-family:var(--serif); font-size:15px; color:var(--ai); margin:0 0 4px;}
+  .frame .fb{font-family:var(--serif); font-size:14px; line-height:1.9; margin:0;}
+  .keyin{width:100%; background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:14px; font-family:var(--sans);}
+  .keyin:focus{outline:none; border-color:var(--ai);}
+  a.tel{color:var(--ai); text-decoration:none; border-bottom:1px solid var(--ai);}
 </style>
 </head>
 <body>
@@ -74,9 +82,12 @@
 <script>
 "use strict";
 
-/* ニュートラル・ノート — Android PWA / 完全オフライン版
-   思想: AIは助言しない。鏡として「事実/解釈/べき」を映し、問いを一つ返すだけ。
-   保存: localStorage（キー 'nn-entries'） */
+/* ニュートラル・ノート — Android PWA
+   思想: AIは助言しない。鏡として「事実/解釈/べき」を映し、問いを一つ返す。
+   「窓」は指示ではなく、別の見方の可能性をそっと差し出すだけ（命令形禁止）。
+   保存: localStorage（キー 'nn-entries'）。
+   AI: APIキー（⚙で設定・端末内のみ保存）があれば鏡と窓にClaudeを使う。
+       未設定/オフラインでも簡易仕分け＋定型の窓で完結する。 */
 
 var C = { ai:"#7FA0BD", ember:"#C98A63", sub:"#8C95A3", ink:"#E9E5DB" };
 var EMOTIONS = ["不安","怒り","悲しみ","焦り","孤独","罪悪感","むなしさ","恐れ","悔しさ","安堵","喜び","静けさ"];
@@ -139,6 +150,96 @@ function buildMirror(text, emotions){
   return { facts:facts.slice(0,5), interpretations:interps.slice(0,5), shoulds:shoulds.slice(0,3), question:QUESTIONS[qi] };
 }
 
+/* ---- Claude API（キーはこの端末のlocalStorageのみ。サーバーには置かない） ---- */
+var API_KEY_STORAGE = "nn-api-key";
+var MODEL = "claude-sonnet-4-6";
+function getApiKey(){ try{ return localStorage.getItem(API_KEY_STORAGE)||""; }catch(e){ return ""; } }
+function setApiKey(k){ try{ if(k) localStorage.setItem(API_KEY_STORAGE, k); else localStorage.removeItem(API_KEY_STORAGE); }catch(e){} }
+
+function callClaude(prompt, maxTokens){
+  return fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{
+      "content-type":"application/json",
+      "x-api-key": getApiKey(),
+      "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true"
+    },
+    body: JSON.stringify({ model:MODEL, max_tokens:maxTokens||900,
+      messages:[{role:"user", content:prompt}] })
+  }).then(function(res){
+    if(!res.ok) throw new Error("API "+res.status);
+    return res.json();
+  }).then(function(data){
+    var raw = (data.content||[]).map(function(b){ return b.text||""; }).join("")
+      .replace(/```json|```/g,"").trim();
+    return JSON.parse(raw);
+  });
+}
+
+/* ---- AIの鏡（助言禁止のプロンプト） ---- */
+function mirrorPrompt(){
+  return 'あなたは「鏡」です。助言・励まし・解決策・評価を一切しません。\n'
+    + '以下の文章を読み、次のJSONだけを返してください。前置き・コードフェンス禁止。\n\n'
+    + '{"facts": ["客観的に起きた事実（短文、最大4つ）"],\n'
+    + ' "interpretations": ["書き手の頭の中の解釈・推測・物語（短文、最大4つ）"],\n'
+    + ' "shoulds": ["文中の『〜すべき』『〜しなければ』等の思い込み表現（原文のまま、最大3つ）"],\n'
+    + ' "question": "書き手が自分の本音に気づくための、開かれた問いをひとつ。問いのみ。"}\n\n'
+    + '文章:\n' + S.text + '\n\n'
+    + '選んだ感情: ' + (S.emotions.join("、")||"未選択") + '（強さ ' + S.intensity + '/100）';
+}
+function aiMirror(){
+  var forText = S.text;
+  callClaude(mirrorPrompt(), 1000).then(function(m){
+    if(S.text!==forText || S.step<2) return; // 書き直されていたら破棄
+    if(m && m.facts){ S.mirror=m; S.mirrorState="ai"; render(); }
+  }).catch(function(e){ console.error(e); if(S.text===forText){ S.mirrorState="error"; render(); } });
+}
+
+/* ---- 窓（リフレーミング）: 指示しない・断定しない・否定しない ---- */
+var CRISIS_WORDS = ["死にたい","消えたい","いなくなりたい","自殺","死のう","死んだほうが",
+  "死ねば","終わりにしたい","生きていたくない","生きるのをやめ","リストカット"];
+function detectCrisis(text){
+  for(var i=0;i<CRISIS_WORDS.length;i++){ if(text.indexOf(CRISIS_WORDS[i])>=0) return true; }
+  return false;
+}
+var FALLBACK_FRAMES = [
+  {title:"友人の窓", body:"もし親友が同じことで悩んでいたら、あなたはどんな言葉をかけるだろう。その言葉は、自分にも向けていいのかもしれない。"},
+  {title:"時間の窓", body:"10年後のあなたがこの日を振り返ったとき、何がいちばん記憶に残っているだろう。今日の出来事の大きさは、少し違って見えるかもしれない。"},
+  {title:"反証の窓", body:"いちばん強い『解釈』と逆のことが起きた場面を、ひとつだけ思い出せるだろうか。例外があるなら、それは絶対ではないのかもしれない。"}
+];
+function windowPrompt(){
+  var m = S.mirror||{};
+  return 'あなたは「窓」です。書き手が同じ出来事を別の窓から眺められるように、'
+    + '「こういう見方もできるかもしれない」という可能性をそっと差し出します。\n\n'
+    + 'ルール:\n'
+    + '- 助言・指示・励まし・評価はしない。命令形・「〜すべき」「〜しましょう」を使わない\n'
+    + '- 断定しない。「〜かもしれない」「〜という見方もある」の形で書く\n'
+    + '- 書き手の感情を否定しない（「大したことではない」等は禁止）\n'
+    + '- 各bodyは100字以内。書き手の文章の具体的な内容に触れること\n'
+    + '- 文章に自傷や希死念慮の兆候がある場合は {"crisis": true} だけを返す\n\n'
+    + '窓の種類の例: 友人の窓（親友が同じ状況なら）/ 時間の窓（10年後から見ると）/ '
+    + '反証の窓（逆の証拠・例外）/ 引きの窓（一歩引いた俯瞰）/ からだの窓（体の感覚に戻る）\n\n'
+    + '次のJSONだけを返す（前置き・コードフェンス禁止）:\n'
+    + '{"crisis": false, "frames": [{"title": "〇〇の窓", "body": "..."}, {"title": "...", "body": "..."}, {"title": "...", "body": "..."}]}\n\n'
+    + '文章:\n' + S.text + '\n\n'
+    + '鏡の仕分け: 事実=' + JSON.stringify(m.facts||[]) + ' / 解釈=' + JSON.stringify(m.interpretations||[])
+    + ' / べき=' + JSON.stringify(m.shoulds||[]) + '\n'
+    + '選んだ感情: ' + (S.emotions.join("、")||"未選択") + '（強さ ' + S.intensity + '/100）';
+}
+function openWindow(){
+  S.step=4; S.chosenIdx=null; S.intensityAfter=null;
+  if(detectCrisis(S.text)){ S.win={state:"crisis"}; render(); return; }
+  if(!getApiKey()){ S.win={state:"done", frames:FALLBACK_FRAMES, source:"fallback"}; render(); return; }
+  S.win={state:"loading"}; render();
+  callClaude(windowPrompt(), 900).then(function(r){
+    if(r && r.crisis){ S.win={state:"crisis"}; }
+    else if(r && r.frames && r.frames.length){ S.win={state:"done", frames:r.frames.slice(0,3), source:"ai"}; }
+    else { S.win={state:"done", frames:FALLBACK_FRAMES, source:"fallback"}; }
+    render();
+  }).catch(function(e){ console.error(e); S.win={state:"error"}; render(); });
+}
+
 /* ---- 心の水位（SVG） ---- */
 function waterSvg(entries){
   var pts = entries.slice(-30);
@@ -149,13 +250,17 @@ function waterSvg(entries){
   var xs=[], ys=[];
   for(var i=0;i<pts.length;i++){
     xs.push(pad + (i*(W-pad*2))/(pts.length-1));
-    var inten = (pts[i].intensity==null?50:pts[i].intensity);
+    // 窓のあとに測り直した値があればそちら（=その日の最終的な水位）
+    var inten = (pts[i].intensityAfter!=null) ? pts[i].intensityAfter
+              : (pts[i].intensity==null?50:pts[i].intensity);
     ys.push(H-pad - (inten/100)*(H-pad*2));
   }
   var path="";
   for(var j=0;j<xs.length;j++){ path += (j===0?"M":"L") + xs[j].toFixed(1) + "," + ys[j].toFixed(1) + " "; }
   var area = path + "L"+xs[xs.length-1]+","+(H-pad)+" L"+xs[0]+","+(H-pad)+" Z";
-  var last = pts[pts.length-1].intensity==null?50:pts[pts.length-1].intensity;
+  var lastPt = pts[pts.length-1];
+  var last = (lastPt.intensityAfter!=null) ? lastPt.intensityAfter
+           : (lastPt.intensity==null?50:lastPt.intensity);
   return '<svg class="water" viewBox="0 0 '+W+' '+H+'" aria-label="不安度の推移">'
     + '<defs><linearGradient id="w" x1="0" y1="0" x2="0" y2="1">'
     + '<stop offset="0%" stop-color="'+C.ai+'" stop-opacity="0.35"/>'
@@ -170,15 +275,16 @@ function waterSvg(entries){
 /* ---- 状態 ---- */
 var S = {
   tab:"write", entries:loadEntries(),
-  step:0, text:"", emotions:[], intensity:50, mirror:null, answer:"",
-  savedFlash:false
+  step:0, text:"", emotions:[], intensity:50, mirror:null, mirrorState:"local", answer:"",
+  win:null, chosenIdx:null, intensityAfter:null,
+  savedFlash:false, keyFlash:""
 };
 
 function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
 
 /* ---- 描画 ---- */
 var app = document.getElementById("app");
-var STEP_NAMES = ["書く","感じる","鏡","問い"];
+var STEP_NAMES = ["書く","感じる","鏡","問い","窓"];
 
 function render(){
   var h = '';
@@ -188,10 +294,12 @@ function render(){
   h += '<nav>'
      + '<button class="tab '+(S.tab==="write"?"on":"")+'" data-tab="write">書く</button>'
      + '<button class="tab '+(S.tab==="log"?"on":"")+'" data-tab="log">水位と記録</button>'
+     + '<button class="tab '+(S.tab==="set"?"on":"")+'" data-tab="set" aria-label="設定">⚙</button>'
      + (S.savedFlash?'<span class="flash">保存しました</span>':'')
      + '</nav>';
 
   if(S.tab==="write") h += renderWrite();
+  else if(S.tab==="set") h += renderSet();
   else h += renderLog();
 
   app.innerHTML = h;
@@ -232,10 +340,19 @@ function renderWrite(){
   }
 
   if(S.step===2){
-    if(!S.mirror) S.mirror = buildMirror(S.text, S.emotions);
+    if(!S.mirror){
+      S.mirror = buildMirror(S.text, S.emotions);
+      if(getApiKey()){ S.mirrorState="loading"; aiMirror(); }
+      else S.mirrorState="local";
+    }
     var m = S.mirror;
+    var mnote = S.mirrorState==="loading" ? 'AIの鏡で読み直しています…（先に簡易の仕分けを表示しています）'
+      : S.mirrorState==="ai" ? 'AIの鏡が映しました。'
+      : S.mirrorState==="error" ? '通信できなかったため、ことばの簡易仕分けです。'
+      : '';
     h += '<div class="card"><div class="label">鏡 — 助言はしない。映すだけ</div>';
     h += '<p class="muted" style="margin:0 0 14px">書いた文章を「起きた事実」と「頭の中の解釈」に仕分けました。判断や励ましはありません。</p>';
+    if(mnote) h += '<p class="micnote" style="margin:0 0 12px">'+mnote+'</p>';
     h += '<div class="grid">';
     h += '<div><div class="mh" style="color:'+C.ember.replace(C.ember,"#8FB8A0")+'">起きた事実</div>';
     if(m.facts.length){ for(var f=0;f<m.facts.length;f++) h += '<p class="mline">・'+esc(m.facts[f])+'</p>'; }
@@ -262,9 +379,87 @@ function renderWrite(){
       + '<textarea id="ta-ans" rows="4" placeholder="答えは自分の中から。書けなければ空欄のままでいい。">'+esc(S.answer)+'</textarea>'
       + '<p class="micnote">声で書くなら、キーボードの🎤マイクキーを押して話してください。</p>'
       + '<div class="row" style="margin-top:14px"><button class="btn" id="to-2b">もどる</button>'
-      + '<button class="btn primary" id="save">記録して閉じる</button></div></div>';
+      + '<span><button class="btn" id="save">記録して閉じる</button> '
+      + '<button class="btn primary" id="to-4">窓をひらく</button></span></div>'
+      + '<p class="micnote" style="margin-top:10px">窓 = この出来事を別の見方から眺めてみる（任意）。</p></div>';
   }
 
+  if(S.step===4){
+    h += renderWindow();
+  }
+
+  h += '</div>';
+  return h;
+}
+
+/* ---- 窓の画面 ---- */
+function renderWindow(){
+  var h = '<div class="card"><div class="label">窓 — 指示しない。別の景色を見せるだけ</div>';
+  var w = S.win || {state:"error"};
+
+  if(w.state==="loading"){
+    h += '<p class="muted">別の窓を探しています…</p>'
+      + '<div style="margin-top:12px"><button class="btn sm" id="to-3b">もどる</button></div>';
+  }
+  else if(w.state==="crisis"){
+    h += '<p class="q" style="margin-bottom:10px">いま、かなり苦しいところにいるように読めました。</p>'
+      + '<p class="muted" style="margin:0 0 14px">こういうときは、見方を変えるより、人の声につながるほうが先だと思います。よければ、ここに。</p>'
+      + '<p class="mline">・#いのちSOS <a class="tel" href="tel:0120061338">0120-061-338</a>（24時間）</p>'
+      + '<p class="mline">・よりそいホットライン <a class="tel" href="tel:0120279338">0120-279-338</a>（24時間・無料）</p>'
+      + '<p class="mline">・いのちの電話 <a class="tel" href="tel:0570783556">0570-783-556</a>（10〜22時）</p>'
+      + '<p class="micnote" style="margin-top:12px">この記録はいつもどおり、あなたの端末の中だけに保存されます。</p>'
+      + '<div class="right" style="margin-top:14px"><button class="btn primary" id="save2">記録して閉じる</button></div>';
+  }
+  else if(w.state==="error"){
+    h += '<p class="muted">窓をひらけませんでした。通信を確認して、もう一度どうぞ。</p>'
+      + '<div class="row" style="margin-top:14px"><button class="btn sm" id="to-3b">もどる</button>'
+      + '<span><button class="btn sm" id="win-retry">もう一度</button> '
+      + '<button class="btn primary" id="save2">窓を使わず閉じる</button></span></div>';
+  }
+  else { // done
+    h += '<p class="muted" style="margin:0 0 14px">どれか一枚、いま覗けそうな窓があれば。なければ選ばずに閉じていい。</p>';
+    if(w.source==="fallback"){
+      h += '<p class="micnote" style="margin:0 0 12px">定型の窓です。⚙でAPIキーを設定すると、書いた内容に合わせた窓になります。</p>';
+    }
+    h += '<div class="grid">';
+    for(var i=0;i<w.frames.length;i++){
+      var f = w.frames[i];
+      h += '<div class="frame '+(S.chosenIdx===i?"on":"")+'" data-frame="'+i+'">'
+        + '<p class="ft">'+esc(f.title)+'</p><p class="fb">'+esc(f.body)+'</p></div>';
+    }
+    h += '</div>';
+    if(S.chosenIdx!=null){
+      var av = (S.intensityAfter==null ? S.intensity : S.intensityAfter);
+      h += '<div style="margin-top:18px"><div class="label">この窓から見たあとの、いまの体感</div>'
+        + '<input type="range" min="0" max="100" id="inten2" value="'+av+'" aria-label="窓のあとの不安度">'
+        + '<div class="big" id="inten2-v">'+av+'</div></div>';
+    }
+    h += '<div class="row" style="margin-top:14px"><button class="btn" id="to-3b">もどる</button>'
+      + '<button class="btn primary" id="save2">記録して閉じる</button></div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+/* ---- 設定画面 ---- */
+function renderSet(){
+  var has = !!getApiKey();
+  var h = '<div class="grid">';
+  h += '<div class="card"><div class="label">AI（鏡と窓）— Claude APIキー</div>'
+    + '<p class="muted" style="margin:0 0 12px">キーを設定すると、鏡の仕分けと「窓」が書いた内容に合わせたものになります。'
+    + '未設定でも、簡易の仕分けと定型の窓で全部使えます。</p>'
+    + '<p class="muted" style="margin:0 0 12px">現在: <b style="color:'+(has?C.ai:C.sub)+'">'+(has?"設定済み":"未設定")+'</b></p>'
+    + '<input type="password" class="keyin" id="key-in" placeholder="sk-ant-..." autocomplete="off">'
+    + '<div class="row" style="margin-top:12px">'
+    + '<button class="btn sm" id="key-clear" '+(has?'':'disabled')+'>削除</button>'
+    + '<button class="btn primary sm" id="key-save">保存</button></div>'
+    + (S.keyFlash?'<p class="micnote" style="margin-top:10px;color:'+C.ai+'">'+esc(S.keyFlash)+'</p>':'')
+    + '<p class="micnote" style="margin-top:12px">キーはこの端末のブラウザ内（localStorage）にだけ保存され、'
+    + 'Anthropicとの通信以外には使われません。発行は console.anthropic.com から。</p></div>';
+  h += '<div class="card"><div class="label">つらいとき（いつでも）</div>'
+    + '<p class="mline">・#いのちSOS <a class="tel" href="tel:0120061338">0120-061-338</a>（24時間）</p>'
+    + '<p class="mline">・よりそいホットライン <a class="tel" href="tel:0120279338">0120-279-338</a>（24時間・無料）</p>'
+    + '<p class="mline">・いのちの電話 <a class="tel" href="tel:0570783556">0570-783-556</a>（10〜22時）</p></div>';
   h += '</div>';
   return h;
 }
@@ -278,11 +473,13 @@ function renderLog(){
     var d = new Date(e.date).toLocaleDateString("ja-JP",{month:"short",day:"numeric",weekday:"short"});
     var emo = (e.emotions||[]).join("・");
     var t = e.text.length>120 ? e.text.slice(0,120)+"…" : e.text;
+    var intenLabel = '不安 '+e.intensity + (e.intensityAfter!=null ? ' → '+e.intensityAfter : '');
     h += '<div class="card sm"><div class="row" style="align-items:baseline">'
-      + '<span class="entry-meta">'+d+'　'+esc(emo)+'　<span style="color:'+C.ember+'">不安 '+e.intensity+'</span></span>'
+      + '<span class="entry-meta">'+d+'　'+esc(emo)+'　<span style="color:'+C.ember+'">'+intenLabel+'</span></span>'
       + '<button class="del" data-del="'+e.id+'" aria-label="この記録を消す">消す</button></div>'
       + '<p class="entry-text">'+esc(t)+'</p>'
       + (e.answer?'<p class="entry-ans">'+esc(e.answer)+'</p>':'')
+      + (e.window && e.window.title ? '<p class="entry-ans" style="border-left-color:'+C.ai+'">〔'+esc(e.window.title)+'〕'+esc(e.window.body||'')+'</p>' : '')
       + '</div>';
   }
   if(S.entries.length===0) h += '<p class="muted">まだ記録がありません。「書く」から始められます。</p>';
@@ -333,6 +530,31 @@ function wire(){
   }
   var to2b=document.getElementById("to-2b"); if(to2b) to2b.onclick=function(){ S.step=2; render(); };
   var saveB=document.getElementById("save"); if(saveB) saveB.onclick=doSave;
+  var to4=document.getElementById("to-4"); if(to4) to4.onclick=openWindow;
+
+  // step4（窓）
+  var to3b=document.getElementById("to-3b"); if(to3b) to3b.onclick=function(){ S.step=3; render(); };
+  var retry=document.getElementById("win-retry"); if(retry) retry.onclick=openWindow;
+  var save2=document.getElementById("save2"); if(save2) save2.onclick=doSave;
+  var frames = app.querySelectorAll("[data-frame]");
+  frames.forEach(function(el){ el.onclick=function(){
+    var i=Number(el.getAttribute("data-frame"));
+    S.chosenIdx = (S.chosenIdx===i ? null : i);
+    if(S.chosenIdx!=null && S.intensityAfter==null) S.intensityAfter=S.intensity;
+    render();
+  };});
+  var inten2 = document.getElementById("inten2");
+  if(inten2) inten2.oninput=function(){ S.intensityAfter=Number(inten2.value); var v=document.getElementById("inten2-v"); if(v) v.textContent=S.intensityAfter; };
+
+  // 設定（APIキー）
+  var keySave=document.getElementById("key-save");
+  if(keySave) keySave.onclick=function(){
+    var v=(document.getElementById("key-in").value||"").trim();
+    if(!v){ S.keyFlash="キーが空です。"; render(); return; }
+    setApiKey(v); S.keyFlash="保存しました（この端末のみ）。"; render();
+  };
+  var keyClear=document.getElementById("key-clear");
+  if(keyClear) keyClear.onclick=function(){ setApiKey(""); S.keyFlash="削除しました。"; render(); };
 
   // log delete
   var dels = app.querySelectorAll("[data-del]");
@@ -344,14 +566,22 @@ function wire(){
 }
 
 function doSave(){
+  var win = null;
+  if(S.win && S.win.state==="crisis") win = { crisis:true };
+  else if(S.win && S.win.state==="done" && S.chosenIdx!=null){
+    var f = S.win.frames[S.chosenIdx];
+    win = { title:f.title, body:f.body, source:S.win.source||"ai" };
+  }
   var entry = {
     id:Date.now(), date:new Date().toISOString(),
     text:S.text, emotions:S.emotions, intensity:S.intensity,
-    mirror:S.mirror||null, answer:S.answer
+    mirror:S.mirror||null, answer:S.answer,
+    window:win, intensityAfter:(S.intensityAfter==null?null:S.intensityAfter)
   };
   S.entries = S.entries.concat([entry]);
   saveEntries(S.entries);
-  S.text=""; S.emotions=[]; S.intensity=50; S.mirror=null; S.answer=""; S.step=0;
+  S.text=""; S.emotions=[]; S.intensity=50; S.mirror=null; S.mirrorState="local"; S.answer="";
+  S.win=null; S.chosenIdx=null; S.intensityAfter=null; S.step=0;
   S.savedFlash=true; S.tab="log"; render();
   setTimeout(function(){ S.savedFlash=false; render(); }, 2200);
 }
