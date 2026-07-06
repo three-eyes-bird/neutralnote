@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 
-/* ニュートラル・ノート — 自分用
+/* ニュートラル・ノート — Claudeアーティファクト専用の旧版（凍結）
+   ※ 2026-07-02以降の正本は index.html（PWA版）。
+      「窓」（リフレーミング）・⚙APIキー設定・不安度before/after などの
+      新機能は index.html のみに実装されており、このファイルには移植しない。
    思想: AIは助言しない。鏡として「事実/解釈/べき」を映し、問いを一つ返すだけ。
    保存: window.storage（キー 'nn-entries' に一括保存） */
 
